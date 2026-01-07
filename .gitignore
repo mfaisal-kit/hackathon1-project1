@@ -1,0 +1,25 @@
+# Dependency directories
+node_modules/
+
+# Docusaurus build output
+.docusaurus/
+build/
+
+# Logs
+*.log
+
+# Environment variables
+.env*
+!.env.example
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+
+# IDE-specific
+.vscode/
+.idea/
