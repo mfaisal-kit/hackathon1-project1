@@ -1,0 +1,196 @@
+"""
+Simplified ingestion script to populate Qdrant database with book content
+"""
+import os
+import asyncio
+import hashlib
+from typing import List, Dict, Any
+from urllib.parse import urljoin, urlparse
+import requests
+from bs4 import BeautifulSoup
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http import models
+import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class SimpleBookIngestor:
+    def __init__(self):
+        self.qdrant_client = AsyncQdrantClient(
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API_KEY")
+        )
+        self.visited_urls = set()
+        self.collection_name = "book_content"
+    
+    async def create_collection_if_not_exists(self):
+        """Create collection if it doesn't exist"""
+        try:
+            await self.qdrant_client.get_collection(self.collection_name)
+            logger.info(f"Collection {self.collection_name} already exists")
+        except:
+            # Collection doesn't exist, create it
+            await self.qdrant_client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE),  # Standard for text-embedding-3-small
+            )
+            logger.info(f"Created new Qdrant collection: {self.collection_name}")
+    
+    async def extract_content_from_url(self, url: str) -> Dict[str, Any]:
+        """Extract content from a single URL"""
+        logger.info(f"Extracting content from {url}")
+        
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Remove script and style elements
+            for script in soup(["script", "style"]):
+                script.decompose()
+            
+            # Extract title
+            title_tag = soup.find('title')
+            title = title_tag.get_text().strip() if title_tag else ""
+            
+            # Extract main content - for Docusaurus sites, this is typically in main content areas
+            main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='container')
+            if main_content:
+                content_text = main_content.get_text(separator=' ', strip=True)
+            else:
+                content_text = soup.get_text(separator=' ', strip=True)
+            
+            # Clean up content
+            content_text = ' '.join(content_text.split())
+            
+            return {
+                'url': url,
+                'title': title,
+                'content': content_text
+            }
+        except Exception as e:
+            logger.error(f"Failed to extract content from {url}: {str(e)}")
+            return {}
+    
+    def chunk_content(self, content: str, max_chunk_size: int = 1000, overlap: int = 200) -> List[str]:
+        """Chunk content into smaller pieces"""
+        if len(content) <= max_chunk_size:
+            return [content]
+        
+        chunks = []
+        start = 0
+        
+        while start < len(content):
+            end = start + max_chunk_size
+            
+            # If we're not at the end, try to break at a sentence boundary
+            if end < len(content):
+                # Look for sentence endings near the end
+                sentence_end = -1
+                for i in range(end, max(0, end - 200), -1):
+                    if content[i] in '.!?':
+                        sentence_end = i + 1
+                        break
+                
+                if sentence_end != -1 and sentence_end > start + 500:  # Don't make chunks too small
+                    end = sentence_end
+                else:
+                    # If no sentence end found, break at word boundary
+                    for i in range(end, max(0, end - 200), -1):
+                        if content[i] == ' ':
+                            end = i
+                            break
+            
+            chunk = content[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            
+            start = end - overlap if end < len(content) else end
+        
+        logger.info(f"Content chunked into {len(chunks)} pieces")
+        return chunks
+    
+    async def store_content_in_qdrant(self, content_data: Dict[str, Any]):
+        """Store content in Qdrant with a mock embedding (for testing)"""
+        if not content_data or not content_data.get('content'):
+            return
+        
+        # Chunk the content
+        content_chunks = self.chunk_content(content_data['content'])
+        
+        points = []
+        for i, chunk in enumerate(content_chunks):
+            # Create a mock embedding (in real implementation, this would be generated by an embedding model)
+            # For now, we'll create a simple mock embedding for testing
+            mock_embedding = [i * 0.01 for i in range(1536)]  # 1536-dimensional vector
+            
+            # Create a unique ID for the chunk
+            chunk_id = hashlib.md5(f"{content_data['url']}_{i}".encode()).hexdigest()
+            
+            # Create payload with metadata
+            payload = {
+                'url': content_data['url'],
+                'title': content_data['title'],
+                'content': chunk,
+                'chunk_index': i
+            }
+            
+            # Add point to collection
+            points.append(
+                models.PointStruct(
+                    id=chunk_id,
+                    vector=mock_embedding,
+                    payload=payload
+                )
+            )
+        
+        if points:
+            # Upload points to Qdrant
+            await self.qdrant_client.upsert(
+                collection_name=self.collection_name,
+                points=points
+            )
+            logger.info(f"Successfully stored {len(points)} vectors in Qdrant for {content_data['url']}")
+        else:
+            logger.warning(f"No points to store for {content_data['url']}")
+    
+    async def run_ingestion_for_single_url(self, url: str):
+        """Run ingestion for a single URL"""
+        await self.create_collection_if_not_exists()
+        
+        # Extract content
+        content_data = await self.extract_content_from_url(url)
+        
+        if content_data:
+            # Store in Qdrant
+            await self.store_content_in_qdrant(content_data)
+            logger.info(f"Successfully processed and stored content from {url}")
+        else:
+            logger.error(f"Failed to extract content from {url}")
+
+
+async def main():
+    """Main function to run the ingestion"""
+    logger.info("Starting simplified ingestion pipeline...")
+    
+    # Use the deployed book URL
+    book_url = "https://hackathon1-book-ragchatbot.vercel.app"  # You can change this to your specific page
+    
+    # Initialize the ingestor
+    ingestor = SimpleBookIngestor()
+    
+    # Run ingestion for the main book URL
+    await ingestor.run_ingestion_for_single_url(book_url)
+    
+    logger.info("Simplified ingestion pipeline completed!")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

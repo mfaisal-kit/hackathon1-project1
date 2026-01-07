@@ -1,0 +1,40 @@
+.features {
+  display: flex;
+  align-items: center;
+  padding: 2rem 0;
+  width: 100%;
+}
+
+.featureSvg {
+  height: 120px;
+  width: 120px;
+  margin: 0 auto 1rem;
+}
+
+/* Override the global styles to ensure proper column layout */
+.featureCard {
+  height: 100%;
+}
+
+.featureCard h3 {
+  color: var(--ifm-color-primary-darker);
+  margin-bottom: 1rem;
+}
+
+.featureCard p {
+  color: var(--ifm-color-secondary-dark);
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 996px) {
+  .featureCard {
+    margin-bottom: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .featureCard {
+    margin: 0.25rem;
+  }
+}
