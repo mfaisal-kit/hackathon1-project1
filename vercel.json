@@ -1,19 +1,6 @@
 {
-  "builds": [
-    {
-      "src": "frontend_book/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "frontend_book/build/$1"
-    }
-  ],
+  "framework": "docusaurus",
+  "rootDirectory": "frontend_book",
   "env": {
     "REACT_APP_API_URL": "https://muhammadfasial-deploy-ragchatbot.hf.space"
   }
