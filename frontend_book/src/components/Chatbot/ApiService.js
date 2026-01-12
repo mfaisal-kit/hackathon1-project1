@@ -7,7 +7,7 @@ class ApiService {
     // Note: Hugging Face Spaces expose the API on the root URL, not on a specific port
     this.baseUrl = typeof process !== 'undefined' && process.env?.REACT_APP_API_URL
       ? process.env.REACT_APP_API_URL
-      : 'https://muhammadfasial-deploy-ragchatbot.hf.space';
+      : 'https://deploy-ragchatbot.hf.space';
   }
 
   async query(requestData) {

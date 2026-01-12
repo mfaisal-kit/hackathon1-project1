@@ -16,6 +16,6 @@
     }
   ],
   "env": {
-    "REACT_APP_API_URL": "https://muhammadfasial-deploy-ragchatbot.hf.space"
+    "REACT_APP_API_URL": "https://deploy-ragchatbot.hf.space"
   }
 }
